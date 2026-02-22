@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Crystals. USA Store</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  .product-img { height: 200px; object-fit: contain; }
+  .card-body { display: flex; flex-direction: column; justify-content: space-between; }
+  .nav-link { cursor: pointer; }
+  .btn-back { margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container">
+    <a class="navbar-brand" id="nav-home">Crystals. USA</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav ms-auto">
+        <li class="nav-item"><a class="nav-link" id="nav-home-link">Home</a></li>
+        <li class="nav-item"><a class="nav-link" id="nav-products-link">Products</a></li>
+        <li class="nav-item"><a class="nav-link" id="nav-add-link">Add Product</a></li>
+        <li class="nav-item"><a class="nav-link" id="nav-cart-link">Cart</a></li>
+        <li class="nav-item"><a class="nav-link" id="nav-orders-link">Orders</a></li>
+        <li class="nav-item"><a class="nav-link" id="nav-auth-link">Login/Register</a></li>
+        <li class="nav-item"><a class="nav-link" id="nav-logout-link" style="display:none;">Logout</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container mt-4" id="app"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics.js";
+import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+
+// ---------------- FIREBASE CONFIG ----------------
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+// ---------------- INITIALIZE FIREBASE ----------------
+const appFirebase = initializeApp(firebaseConfig);
+const analytics = getAnalytics(appFirebase);
+const db = getFirestore(appFirebase);
+const auth = getAuth(appFirebase);
+
+// ---------------- GLOBALS ----------------
+const app = document.getElementById('app');
+let products = [];
+let currentUser = null;
+let cart = [];
+
+// ---------------- NAVIGATION ----------------
+function updateNav(){
+  if(currentUser){ 
+    document.getElementById('nav-auth-link').style.display='none';
+    document.getElementById('nav-logout-link').style.display='block';
+  } else {
+    document.getElementById('nav-auth-link').style.display='block';
+    document.getElementById('nav-logout-link').style.display='none';
+  }
+}
+
+document.getElementById('nav-home-link').addEventListener('click', showHome);
+document.getElementById('nav-home').addEventListener('click', showHome);
+document.getElementById('nav-products-link').addEventListener('click', ()=>currentUser ? showProducts() : showAuthForm());
+document.getElementById('nav-add-link').addEventListener('click', ()=>currentUser ? showAddForm() : showAuthForm());
+document.getElementById('nav-cart-link').addEventListener('click', ()=>currentUser ? showCart() : showAuthForm());
+document.getElementById('nav-orders-link').addEventListener('click', ()=>currentUser ? showOrders() : showAuthForm());
+document.getElementById('nav-auth-link').addEventListener('click', showAuthForm);
+document.getElementById('nav-logout-link').addEventListener('click', async () => { 
+  await signOut(auth); 
+  currentUser=null; cart=[]; updateNav(); showHome(); 
+});
+
+onAuthStateChanged(auth, u=>{ currentUser=u; updateNav(); });
+
+// ---------------- INIT DEFAULT PRODUCTS ----------------
+async function initProducts(){
+  const snapshot = await getDocs(collection(db,'products'));
+  if(snapshot.empty){
+    const defaultProducts = [
+      { title: "Amethyst Crystal", price: 25, description: "Beautiful purple Amethyst.", category: "Crystals", image: "https://via.placeholder.com/150?text=Amethyst" },
+      { title: "Rose Quartz", price: 20, description: "Pink Rose Quartz for love energy.", category: "Crystals", image: "https://via.placeholder.com/150?text=Rose+Quartz" },
+      { title: "Clear Quartz", price: 30, description: "Clear Quartz for clarity.", category: "Crystals", image: "https://via.placeholder.com/150?text=Clear+Quartz" },
+      { title: "Citrine Crystal", price: 28, description: "Citrine for abundance and positivity.", category: "Crystals", image: "https://via.placeholder.com/150?text=Citrine" },
+      { title: "Black Tourmaline", price: 22, description: "Protective Black Tourmaline.", category: "Crystals", image: "https://via.placeholder.com/150?text=Black+Tourmaline" }
+    ];
+    for(const p of defaultProducts){ await addDoc(collection(db,'products'), p); }
+  }
+}
+
+// ---------------- HOME ----------------
+function showHome(){
+  app.innerHTML = `<div class="text-center mt-5">
+    <h1>Welcome to Crystal's Store.USA</h1>
+    <button class="btn btn-primary" id="go-products">View Products</button>
+  </div>`;
+  document.getElementById('go-products').addEventListener('click', ()=>currentUser ? showProducts() : showAuthForm());
+}
+
+// ---------------- AUTH ----------------
+function showAuthForm(){
+  app.innerHTML = `
+    <h2>Login or Register</h2>
+    <form id="auth-form">
+      <div class="mb-3"><label>Email</label><input type="email" class="form-control" name="email" required></div>
+      <div class="mb-3"><label>Password</label><input type="password" class="form-control" name="password" required></div>
+      <button class="btn btn-primary" type="submit">Submit</button>
+    </form>
+    <div id="auth-message" class="mt-3"></div>
+    <button class="btn btn-secondary btn-back mt-3" id="back-btn">Back</button>
+  `;
+  document.getElementById('back-btn').addEventListener('click', showHome);
+  document.getElementById('auth-form').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const email=e.target.email.value;
+    const password=e.target.password.value;
+    const msgDiv = document.getElementById('auth-message');
+    msgDiv.innerHTML='Loading...';
+    try{
+      await signInWithEmailAndPassword(auth,email,password);
+      msgDiv.innerHTML='Logged in successfully!';
+      showHome();
+    }catch(err){
+      if(err.code==='auth/user-not-found'){
+        try{ await createUserWithEmailAndPassword(auth,email,password); msgDiv.innerHTML='User created & logged in!'; showHome(); } 
+        catch(e){ msgDiv.innerHTML='Error: '+e.message; }
+      } else { msgDiv.innerHTML='Error: '+err.message; }
+    }
+  });
+}
+
+// ---------------- PRODUCTS ----------------
+async function showProducts(){
+  app.innerHTML=`<div class="text-center"><div class="spinner-border mt-5"></div></div>`;
+  try{
+    const snapshot = await getDocs(collection(db,'products'));
+    products = snapshot.docs.map(doc=>({id:doc.id, ...doc.data()}));
+    let html='<div class="row g-4">';
+    products.forEach(p=>{
+      html+=`<div class="col-xs-12 col-sm-6 col-md-4 col-lg-3">
+        <div class="card h-100">
+          <img src="${p.image || 'https://via.placeholder.com/150'}" class="card-img-top product-img">
+          <div class="card-body d-flex flex-column">
+            <h5 class="card-title">${p.title}</h5>
+            <p class="card-text">$${p.price}</p>
+            <button class="btn btn-primary mt-1" onclick="showDetails('${p.id}')">View Details</button>
+            <button class="btn btn-success mt-1" onclick="addToCart('${p.id}')">Add to Cart</button>
+          </div>
+        </div>
+      </div>`;
+    });
+    html+='</div>'; app.innerHTML=html;
+  }catch(err){ console.error(err); app.innerHTML='<div class="alert alert-danger mt-5">Failed to load products</div>'; }
+}
+
+// ---------------- PRODUCT DETAILS ----------------
+window.showDetails = async function(id){
+  const product = products.find(p=>p.id===id);
+  if(!product) return showProducts();
+  app.innerHTML = `
+    <div class="card text-center">
+      <img src="${product.image}" class="card-img-top" style="height:300px; object-fit:contain;">
+      <div class="card-body">
+        <h3>${product.title}</h3>
+        <p>${product.description || ''}</p>
+        <p><strong>Category:</strong> ${product.category}</p>
+        <p><strong>Price:</strong> $${product.price}</p>
+        <button class="btn btn-success mt-1" onclick="addToCart('${product.id}')">Add to Cart</button>
+        <button class="btn btn-primary mt-1" onclick="showEditForm('${product.id}')">Edit</button>
+        <button class="btn btn-danger mt-1" onclick="deleteProduct('${product.id}')">Delete</button>
+        <button class="btn btn-secondary btn-back mt-2" id="back-btn">Back</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('back-btn').addEventListener('click', showProducts);
+}
+
+// ---------------- ADD/EDIT/DELETE ----------------
+function showAddForm(){
+  if(!currentUser){ alert('Login required'); return; }
+  app.innerHTML = `
+    <h2>Add Product</h2>
+    <form id="product-form">
+      <div class="mb-3"><label>Title</label><input class="form-control" name="title" required></div>
+      <div class="mb-3"><label>Price</label><input class="form-control" name="price" type="number" required></div>
+      <div class="mb-3"><label>Description</label><textarea class="form-control" name="description"></textarea></div>
+      <div class="mb-3"><label>Category</label><input class="form-control" name="category"></div>
+      <div class="mb-3"><label>Image URL</label><input class="form-control" name="image"></div>
+      <button class="btn btn-primary" type="submit">Add</button>
+      <button class="btn btn-secondary btn-back" id="back-btn">Back</button>
+    </form>
+    <div id="message" class="mt-3"></div>
+  `;
+  document.getElementById('back-btn').addEventListener('click', showProducts);
+  document.getElementById('product-form').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const f=e.target;
+    try{
+      await addDoc(collection(db,'products'), {title:f.title.value, price:parseFloat(f.price.value), description:f.description.value, category:f.category.value, image:f.image.value});
+      showProducts();
+    }catch(err){ console.error(err); alert('Failed to add product'); }
+  });
+}
+
+async function showEditForm(id){
+  const p = products.find(x=>x.id===id); if(!p){ alert('Not found'); return; }
+  app.innerHTML = `
+    <h2>Edit Product</h2>
+    <form id="edit-form">
+      <div class="mb-3"><label>Title</label><input class="form-control" name="title" value="${p.title}" required></div>
+      <div class="mb-3"><label>Price</label><input class="form-control" name="price" type="number" value="${p.price}" required></div>
+      <div class="mb-3"><label>Description</label><textarea class="form-control" name="description">${p.description}</textarea></div>
+      <div class="mb-3"><label>Category</label><input class="form-control" name="category" value="${p.category}"></div>
+      <div class="mb-3"><label>Image URL</label><input class="form-control" name="image" value="${p.image}"></div>
+      <button class="btn btn-primary" type="submit">Update</button>
+      <button class="btn btn-secondary btn-back" id="back-btn">Back</button>
+    </form>
+  `;
+  document.getElementById('back-btn').addEventListener('click', showProducts);
+  document.getElementById('edit-form').addEventListener('submit', async e=>{
+    e.preventDefault(); const f=e.target;
+    try{ await updateDoc(doc(db,'products',id), {title:f.title.value, price:parseFloat(f.price.value), description:f.description.value, category:f.category.value, image:f.image.value}); showProducts(); } 
+    catch(err){ console.error(err); alert('Failed'); }
+  });
+}
+
+async function deleteProduct(id){ if(!confirm('Delete?')) return;
+  try{ await deleteDoc(doc(db,'products',id)); showProducts(); alert('Deleted'); } catch(err){ console.error(err); alert('Failed'); }
+}
+
+// ---------------- CART ----------------
+window.addToCart = function(id){ 
+  if(!currentUser){ alert('Login required'); return; } 
+  const p = products.find(x=>x.id===id); if(p){ cart.push(p); alert('Added to cart'); }
+}
+
+function showCart(){ 
+  if(!currentUser){ alert('Login required'); return; }
+  if(cart.length===0){ app.innerHTML='<p>Cart empty</p>'; return; }
+  let html='<h2>Cart</h2><ul class="list-group">';
+  cart.forEach((p,i)=>{ html+=`<li class="list-group-item">${p.title} - $${p.price} <button class="btn btn-sm btn-danger float-end" onclick="removeFromCart(${i})">Remove</button></li>` });
+  html+='</ul><button class="btn btn-success mt-3" id="place-order">Place Order</button> <button class="btn btn-secondary btn-back mt-3" id="back-btn">Back</button>';
+  app.innerHTML=html;
+  document.getElementById('back-btn').addEventListener('click', showProducts);
+  document.getElementById('place-order').addEventListener('click', placeOrder);
+}
+window.removeFromCart = function(i){ cart.splice(i,1); showCart(); }
+
+// ---------------- ORDERS ----------------
+async function placeOrder(){ 
+  try{ await addDoc(collection(db,'orders'), {userId:currentUser.uid, products:cart, createdAt:serverTimestamp()}); cart=[]; alert('Order placed!'); showProducts(); } 
+  catch(err){ console.error(err); alert('Failed'); } 
+}
+
+async function showOrders(){ 
+  if(!currentUser){ alert('Login required'); return; }
+  const q = query(collection(db,'orders'), where('userId','==',currentUser.uid));
+  const snapshot = await getDocs(q);
+  if(snapshot.empty){ app.innerHTML='<p>No orders.</p>'; return; }
+  let html='<h2>Orders</h2><ul class="list-group">';
+  snapshot.docs.forEach(d=>{
+    const o=d.data();
+    const date=o.createdAt?.toDate()?.toLocaleString()||'Unknown';
+    const total=o.products.reduce((sum,p)=>sum+p.price,0);
+    html+=`<li class="list-group-item">ID: ${d.id} - Date: ${date} - Total: $${total.toFixed(2)} <button class="btn btn-sm btn-primary float-end" onclick='viewOrder("${d.id}")'>View</button></li>`;
+  });
+  html+='</ul><button class="btn btn-secondary btn-back mt-3" id="back-btn">Back</button>';
+  app.innerHTML=html;
+  document.getElementById('back-btn').addEventListener('click', showHome);
+}
+
+async function viewOrder(id){
+  const docs = await getDocs(collection(db,'orders'));
+  const o = docs.docs.find(d=>d.id===id)?.data(); if(!o){ alert('Not found'); return; }
+  let html='<h2>Order Details</h2><ul class="list-group">';
+  o.products.forEach(p=>{ html+=`<li class="list-group-item">${p.title} - $${p.price}</li>` });
+  const total=o.products.reduce((sum,p)=>sum+p.price,0);
+  html+=`</ul><p class="mt-3"><strong>Total:</strong> $${total.toFixed(2)}</p><button class="btn btn-secondary btn-back mt-3" id="back-btn">Back to Orders</button>`;
+  app.innerHTML=html;
+  document.getElementById('back-btn').addEventListener('click', showOrders);
+}
+
+// ---------------- INIT ----------------
+await initProducts();
+showHome();
+
+</script>
+
+<script src="
+
